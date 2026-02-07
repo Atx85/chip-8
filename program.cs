@@ -206,16 +206,25 @@ class InstructionDecoder {
   public void Seed() {
   }
 }
+class Registers {
+  public byte[] V;
+  public short I;
 
+  public Registers () {
+    V = new byte[16];
+  }
+}
 class Cpu : ICpu {
   private IBus bus;
   private short pc;
   private InstructionDecoder decoder;
+  private Registers regs;
 
   public Cpu(IBus paramBus) {
     pc = 0x200;
     bus = paramBus;
     decoder = new InstructionDecoder();
+    regs = new Registers();
   }
   public int Step() {
     Instruction i = decoder.Decode(bus,ref pc);
