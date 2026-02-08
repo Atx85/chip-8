@@ -1,22 +1,37 @@
+// https://en.wikipedia.org/wiki/CHIP-8
 using System;
 using System.IO;
 using System.Collections.Generic;
 namespace Chip8 {
-interface IBus { void Write(short addr, byte val); byte Read(short addr); }
+interface IBus { 
+  void Write(short addr, byte val); 
+  byte Read(short addr); 
+  void StackPush(byte val);
+  byte StackPop();
+  byte Key();
+  void PressKey(byte keys);
+}
 interface ICpu { int Step(); }
 interface IInstructionDecoder { void Decode(short opcode, ref short pc); }
+
 class Bus : IBus {
   private byte[] memory; 
+  private Stack<byte> stack;
+  private byte key; // keyboard hex 0 .. 15
 
   public Bus(byte[] rom) {
     memory = new byte[0x1000];
+    stack = new Stack<byte>();
     for (int i = 0; i < rom.Length; i++) {
       memory[0x200 + i] = rom[i];
     }
   }
-
+  public void StackPush(byte val) => stack.Push(val);
+  public byte StackPop() => stack.Pop();
   public byte Read(short addr) =>  memory[addr];
   public void Write(short addr, byte val) => memory[addr] = val;
+  public byte Key() => key;
+  public void PressKey(byte keys) => key = keys;
 }
 
 public struct Instruction {
@@ -24,31 +39,206 @@ public struct Instruction {
   public string type;
   public string c;
   public short operand;
+  public byte x, y;
 }
 
 class Registers {
   public byte[] V;
   public short I;
+  public short pc;
 
   public Registers () {
     V = new byte[16];
+    pc = 0x200;
+  }
+}
+class Timer {
+  private byte time;
+  public byte Time { get; set;}
+  public Timer () { Time = 0; }
+  public void Advance () {
+    if (Time > 0) Time --;
   }
 }
 class Cpu : ICpu {
   private IBus bus;
-  private short pc;
   private InstructionDecoder decoder;
   private Registers regs;
+  private Timer delayTimer, soundTimer;
+  private bool[] frameBuffer;
 
   public Cpu(IBus paramBus) {
-    pc = 0x200;
     bus = paramBus;
     decoder = new InstructionDecoder();
     regs = new Registers();
+    delayTimer = new Timer();
+    soundTimer = new Timer();
+    frameBuffer = new bool[64 * 32];
+  }
+  void Call(Instruction inst) {
+    bus.StackPush((byte)(regs.pc & 0x00FF));
+    bus.StackPush((byte)(regs.pc & 0xFF00 >> 8));
+    regs.pc = inst.operand;
+  }
+  void Ret() {
+    byte h = bus.StackPop();
+    byte l = bus.StackPop();
+    short newAddr = (short)(h << 8 & l);
+    regs.pc = newAddr; 
+  }
+  void Draw(byte x, byte y, short N) {
+    // draws a sprite at x,y 8 wide, N high starting from memory location I, 
+    // VF is set to 1 if any screen pixels are flipped from set to unset and 0 if that doesn't happen
+    Console.WriteLine($"I: {regs.I:X4} X: {x} Y: {y} N: {N}");
+  }
+  void DisplayClear() {
+    frameBuffer = new bool[64 * 32];
+  }
+  void Execute(Instruction inst, ref Registers regs) {
+    switch (inst.type) {
+      case "0NNN": {
+                     Call(inst);
+                     break;
+                   }
+      case "00E0": {
+                     DisplayClear();
+                     break;
+                   }
+      case "00EE": {
+                     Ret();
+                     break;
+                   }
+      case "1NNN": {
+                     regs.pc = inst.operand;
+                     break;
+                   }
+      case "2NNN": {
+                    Call(inst);
+                    break;
+                   }
+      case "3XNN": {
+                     if (regs.V[inst.x] == inst.operand) regs.pc++;
+                     break;
+                   }
+      case "4XNN": {
+                     if (regs.V[inst.x] != inst.operand) regs.pc++;
+                     break;
+                   }
+      case "5XY0": {
+                     if (regs.V[inst.x] == regs.V[inst.y]) regs.pc++;
+                     break;
+                   }
+      case "6XNN": {
+                     regs.V[inst.x] = (byte)inst.operand;
+                     break;
+                   }
+      case "7XNN": {  
+                     regs.V[inst.x] += (byte)inst.operand;
+                     break;
+                   }
+      case "8XY0": {  
+                     regs.V[inst.x]  = regs.V[inst.x];
+                     break;
+                   }
+      case "8XY1": {  
+                     regs.V[inst.x]  |= regs.V[inst.x];
+                     break;
+                   }
+      case "8XY2": {  
+                     regs.V[inst.x]  &= regs.V[inst.x];
+                     break;
+                   }
+      case "8XY3": {  
+                     regs.V[inst.x]  ^= regs.V[inst.x];
+                     break;
+                   }
+      case "8XY4": {  
+                     regs.V[inst.x]  += regs.V[inst.x];
+                     break;
+                   }
+      case "8XY5": {  
+                     regs.V[inst.x]  -= regs.V[inst.x];
+                     break;
+                   }
+      case "8XY6": {  
+                     regs.V[inst.x]  >>= 1;
+                     break;
+                   }
+      case "8XY7": {  
+                     regs.V[inst.x]  = (byte)(regs.V[inst.y] -  regs.V[inst.x]);
+                     break;
+                   }
+      case "8XYE": {  
+                     regs.V[inst.x]  <<= 1;
+                     break;
+                   }
+      case "9XY0": {
+                     if (regs.V[inst.x] != regs.V[inst.y]) regs.pc++;
+                     break;
+                   }
+      case "ANNN": {
+                     regs.I = inst.operand;
+                     break;
+                   }
+      case "BNNN": {
+                     regs.pc = (short)(regs.V[0] + inst.operand);
+                     break;
+                   }
+      case "CXNN": {
+                     Random rnd = new Random();
+                     byte rNum = (byte)rnd.Next(0, 255);
+                     regs.V[inst.x] = (byte)(rNum & inst.operand);
+                     break;
+                   }
+      case "DXYN": {
+                     Draw(regs.V[inst.x], regs.V[inst.y], inst.operand);
+                     break;
+                   }
+      case "EX9E": {
+                     if (bus.Key() == regs.V[inst.x]) regs.pc++;
+                     break;
+                   }
+      case "EXA1": {
+                     if (bus.Key() != regs.V[inst.x]) regs.pc++;
+                     break;
+                   }
+      case "FX07": {
+                     regs.V[inst.x] = delayTimer.Time;
+                     break;
+                   }
+      case "FX0A": {
+                     regs.V[inst.x] = bus.Key();
+                     break;
+                   }
+      case "FX15": {
+                     delayTimer.Time = regs.V[inst.x];
+                     break;
+                   }
+      case "FX18": {
+                     soundTimer.Time = regs.V[inst.x];
+                     break;
+                   }
+      case "FX1E": {
+                     regs.I += regs.V[inst.x];
+                     break;
+                   }
+      case "FX29": {
+                     //I = sprite_addr[Vx]	
+                     //Sets I to the location of the sprite for the character in VX(only consider the lowest nibble). 
+                     //Characters 0-F (in hexadecimal) are represented by a 4x5 font.[23]
+                     break;
+                   }
+      case "FX33": break;
+      case "FX55": break;
+      case "FX65": break;
+      default: Console.WriteLine($"{inst.type} {inst.op:X4} is not implemented"); break;
+    }
   }
   public int Step() {
-    Instruction i = decoder.Decode(bus,ref pc);
-    Console.WriteLine($"${i.op:X4} - {i.c}");
+    // pc is incremented in decoder
+    Instruction i = decoder.Decode(bus,ref regs.pc);
+    Console.WriteLine($"PC: ${regs.pc:X4} OP:${i.op:X4} Type:{i.type} {i.c}");
+    Execute(i, ref regs);
    return 1;
   }
 }
@@ -63,7 +253,7 @@ public class Program
     IBus bus = new Bus(rom);
     ICpu cpu = new Cpu(bus);
 
-    for (int i = 0; i < 20; i++)
+    for (int i = 0; i < 40; i++)
     cpu.Step();
   }
 }

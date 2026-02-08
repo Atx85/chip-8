@@ -4,9 +4,9 @@ using System.Collections.Generic;
 
 namespace Chip8 {
   class InstructionDecoder {
-    private Dictionary<byte, Instruction> table;
+    // private Dictionary<byte, Instruction> table;
     public InstructionDecoder() {
-      table = new Dictionary<byte, Instruction>();
+      // table = new Dictionary<byte, Instruction>();
       Seed();
     }
     public Instruction Decode(IBus bus, ref short pc) {
@@ -27,17 +27,23 @@ namespace Chip8 {
       i.type = "?";
       i.c = "";
       i.op = opCode;
+      i.x = d1;
+      i.y = d2;
       switch (d0) {
         case 0 : {
-                   if (op << 6 == 0) {
-                     i.type = "00E0";
-                     i.c = "disp_clear();";
-                   }
-                   else {
-                     i.type = "00EE";
-                     i.c = "return;";
-                   }
-
+                   i.type = "0NNN";
+                   i.c = $"call(${nnn:X4})";
+                   i.operand = nnn;
+                   switch (opCode) {
+                     case 0x00E0: { 
+                                    i.type = "00E0";
+                                    i.c = "disp_clear();";
+                                    break;}
+                     case 0x00EE: { 
+                                    i.type = "00EE";
+                                    i.c = "return;";
+                                    break;}
+                  }
                    // there might be a 0NNN -> calls machine coderoutine at nnn;
                    break;
                  }
@@ -56,6 +62,7 @@ namespace Chip8 {
         case 3: {
                   i.type = "3XNN"; 
                   i.operand = nn;
+                  i.x = d1;
                   i.c = $"if vx != {nn:X2}";
                   break;
                 }
