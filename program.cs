@@ -22,6 +22,10 @@ class Bus : IBus {
   public Bus(byte[] rom) {
     memory = new byte[0x1000];
     stack = new Stack<byte>();
+    Fonts fonts = new Fonts();
+    for (int i = 0; i < fonts.chip8Fontset.Length; i++) {
+      memory[i] = fonts.chip8Fontset[i];
+    }
     for (int i = 0; i < rom.Length; i++) {
       memory[0x200 + i] = rom[i];
     }
@@ -100,22 +104,10 @@ class Cpu : ICpu {
   }
   void Execute(Instruction inst, ref Registers regs) {
     switch (inst.type) {
-      case "0NNN": {
-                     Call(inst);
-                     break;
-                   }
-      case "00E0": {
-                     DisplayClear();
-                     break;
-                   }
-      case "00EE": {
-                     Ret();
-                     break;
-                   }
-      case "1NNN": {
-                     regs.pc = inst.operand;
-                     break;
-                   }
+      case "0NNN": {Call(inst); break; }
+      case "00E0": {DisplayClear();break;}
+      case "00EE": {Ret();break;}
+      case "1NNN": {regs.pc = inst.operand;break;}
       case "2NNN": {
                     Call(inst);
                     break;
