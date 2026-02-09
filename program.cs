@@ -26,7 +26,9 @@ class Bus : IBus {
       memory[0x200 + i] = rom[i];
     }
   }
-  public void StackPush(byte val) => stack.Push(val);
+  public void StackPush(byte val) {
+    stack.Push(val);
+  }
   public byte StackPop() => stack.Pop();
   public byte Read(short addr) =>  memory[addr];
   public void Write(short addr, byte val) => memory[addr] = val;
@@ -76,14 +78,16 @@ class Cpu : ICpu {
     frameBuffer = new bool[64 * 32];
   }
   void Call(Instruction inst) {
-    bus.StackPush((byte)(regs.pc & 0x00FF));
-    bus.StackPush((byte)(regs.pc & 0xFF00 >> 8));
-    regs.pc = inst.operand;
+    byte l = (byte)(regs.pc & 0x00FF);
+    byte h = (byte)((regs.pc & 0xFF00) >> 8);
+    bus.StackPush(l);
+    bus.StackPush(h);
+    regs.pc = (short)(inst.operand);
   }
   void Ret() {
     byte h = bus.StackPop();
     byte l = bus.StackPop();
-    short newAddr = (short)(h << 8 & l);
+    short newAddr = (short)((h << 8) | l);
     regs.pc = newAddr; 
   }
   void Draw(byte x, byte y, short N) {
@@ -117,15 +121,15 @@ class Cpu : ICpu {
                     break;
                    }
       case "3XNN": {
-                     if (regs.V[inst.x] == inst.operand) regs.pc++;
+                     if (regs.V[inst.x] == inst.operand) regs.pc+=2;
                      break;
                    }
       case "4XNN": {
-                     if (regs.V[inst.x] != inst.operand) regs.pc++;
+                     if (regs.V[inst.x] != inst.operand) regs.pc+=2;
                      break;
                    }
       case "5XY0": {
-                     if (regs.V[inst.x] == regs.V[inst.y]) regs.pc++;
+                     if (regs.V[inst.x] == regs.V[inst.y]) regs.pc+=2;
                      break;
                    }
       case "6XNN": {
@@ -173,7 +177,7 @@ class Cpu : ICpu {
                      break;
                    }
       case "9XY0": {
-                     if (regs.V[inst.x] != regs.V[inst.y]) regs.pc++;
+                     if (regs.V[inst.x] != regs.V[inst.y]) regs.pc+=2;
                      break;
                    }
       case "ANNN": {
@@ -195,11 +199,11 @@ class Cpu : ICpu {
                      break;
                    }
       case "EX9E": {
-                     if (bus.Key() == regs.V[inst.x]) regs.pc++;
+                     if (bus.Key() == regs.V[inst.x]) regs.pc+=2;
                      break;
                    }
       case "EXA1": {
-                     if (bus.Key() != regs.V[inst.x]) regs.pc++;
+                     if (bus.Key() != regs.V[inst.x]) regs.pc+=2;
                      break;
                    }
       case "FX07": {
@@ -228,9 +232,23 @@ class Cpu : ICpu {
                      //Characters 0-F (in hexadecimal) are represented by a 4x5 font.[23]
                      break;
                    }
-      case "FX33": break;
-      case "FX55": break;
-      case "FX65": break;
+      case "FX33": /* BCD  */ break;
+      case "FX55": {
+                     // reg_dump
+                     int startingI = regs.I;
+                     for (int i = 0; i <= inst.x; i++) {
+                       bus.Write((short)(startingI + i),  (byte)regs.V[i]);
+                     }
+                     break;
+                   }
+      case "FX65": {
+                     // reg_load
+                     int startingI = regs.I;
+                     for (int i = 0; i <= inst.x; i++) {
+                       regs.V[i] = bus.Read((short)(startingI + i));
+                     }
+                     break;
+                   }
       default: Console.WriteLine($"{inst.type} {inst.op:X4} is not implemented"); break;
     }
   }
@@ -253,7 +271,7 @@ public class Program
     IBus bus = new Bus(rom);
     ICpu cpu = new Cpu(bus);
 
-    for (int i = 0; i < 40; i++)
+    for (int i = 0; i < 100; i++)
     cpu.Step();
   }
 }

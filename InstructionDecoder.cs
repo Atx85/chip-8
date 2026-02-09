@@ -14,7 +14,7 @@ namespace Chip8 {
       pc++;
       byte op2 = bus.Read(pc);
       pc++;
-      short opCode = (short)(op << 8 | op2);
+      short opCode = (short)((op << 8) | op2);
       byte d0 = (byte)((opCode & 0xF000) >> 12);
       byte d1 = (byte)((opCode & 0x0F00) >> 8);
       byte d2 = (byte)((opCode & 0x00F0) >> 4);
@@ -35,6 +35,7 @@ namespace Chip8 {
                    i.c = $"call(${nnn:X4})";
                    i.operand = nnn;
                    switch (opCode) {
+                     case 0x0000: break;
                      case 0x00E0: { 
                                     i.type = "00E0";
                                     i.c = "disp_clear();";
