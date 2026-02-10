@@ -94,10 +94,21 @@ class Cpu : ICpu {
     short newAddr = (short)((h << 8) | l);
     regs.pc = newAddr; 
   }
+  byte coord (byte x, byte y) => (byte)(y * 32 + x);
   void Draw(byte x, byte y, short N) {
     // draws a sprite at x,y 8 wide, N high starting from memory location I, 
     // VF is set to 1 if any screen pixels are flipped from set to unset and 0 if that doesn't happen
-    Console.WriteLine($"I: {regs.I:X4} X: {x} Y: {y} N: {N}");
+     int row = y;
+     for (int actualRow = row; actualRow < 8; actualRow++) {
+       int x0 = (int) coord(x, (byte)actualRow); 
+       int xn = x0 + 8;// this might need more 
+       Console.WriteLine("Drawing: ");
+       for (int w = x0; w < xn; w++) {
+         Console.Write($"{bus.Read(regs.I):X4} ");
+         // do something here and around for N
+       } 
+     }
+     Console.WriteLine($"\nI: {regs.I:X4} X: {x} Y: {y} N: {N}");
   }
   void DisplayClear() {
     frameBuffer = new bool[64 * 32];
@@ -222,6 +233,11 @@ class Cpu : ICpu {
                      //I = sprite_addr[Vx]	
                      //Sets I to the location of the sprite for the character in VX(only consider the lowest nibble). 
                      //Characters 0-F (in hexadecimal) are represented by a 4x5 font.[23]
+                     short c = (short)(regs.V[inst.x] & 0x0F);
+                     short f = 0xFF;
+                     c = (short)(f & c);
+                     // Console.WriteLine($"{regs.V[inst.x]:X2} {inst.x:X2} Setting I: {c}");
+                     regs.I = c;
                      break;
                    }
       case "FX33": /* BCD  */ break;
@@ -247,7 +263,7 @@ class Cpu : ICpu {
   public int Step() {
     // pc is incremented in decoder
     Instruction i = decoder.Decode(bus,ref regs.pc);
-    Console.WriteLine($"PC: ${regs.pc:X4} OP:${i.op:X4} Type:{i.type} {i.c}");
+    Console.WriteLine($"PC:${regs.pc:X4} OP:${i.op:X4} Type:{i.type} {i.c}");
     Execute(i, ref regs);
    return 1;
   }
